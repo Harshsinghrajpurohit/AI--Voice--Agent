@@ -2,7 +2,7 @@
 
 > Update at the end of every work session. Exists so a fresh chat (or a different AI tool)
 > can continue without re-reading the whole codebase or inventing things.
-> Last updated: 2026-09-28 — end of Phase 0.
+> Last updated: 2026-09-28 — end of Phase 1.
 
 ## What this project is
 Fully local, knowledge-base-grounded **banking FAQ** voice assistant. Answers only from
@@ -12,6 +12,8 @@ Pipeline: mic -> WebRTC VAD endpointing -> Faster-Whisper STT -> hybrid retrieva
 (dense + BM25) -> guardrailed Ollama/Llama 3.2 -> numeric verification -> Piper TTS -> speakers.
 
 ## Locked decisions
+- Bank identity: **Northwind Bank** (fictional retail & commercial bank).
+- Market & Currency: **Indian Rupee (INR, ₹)** across all products, tariffs, and interest rates.
 - Channel (v1): local device only. The audio transport is *pluggable*; a web call is a later
   phase. No SIP/PSTN/outbound — telephony can never be fully local (it needs a carrier).
 - STT: faster-whisper `base`, CPU, int8, language `en`, banking-vocabulary `initial_prompt`.
@@ -27,13 +29,12 @@ Pipeline: mic -> WebRTC VAD endpointing -> Faster-Whisper STT -> hybrid retrieva
 - Latency budget: <= 4 s target, <= 8 s hard ceiling.
 - Version: `pyproject.toml` and `__init__.__version__` must match (enforced by a test).
 
-## Pending decisions (Phase 1 — the KB)
-- Fictional bank name — proposed "Northwind Bank".
-- Product scope — proposed: savings & current, fixed deposits, credit cards, personal/auto/home
-  loans, fees & charges, account opening/KYC, digital banking & card blocking.
-- **Market/currency — still open:** IN/INR, PK/PKR, LK/LKR, US/USD, or explicitly fictional.
-- Front-matter parsing — proposed: dependency-free strict `key: value` (no PyYAML).
-- Version reset 0.3.0 -> 0.1.0 — proposed, not done (needs a re-run of `pip install -e ".[dev]"`).
+## Phase status
+- Phase 0 (installable & testable): DONE — `config.py`, `cli.py`, `__main__.py`, `tests/`,
+  `.gitignore`, `Memory.md`, `PRD.md`, `Architecture.md`, `Rules.md`, `Phases.md`, `Design.md`.
+- Phase 1 (Knowledge Base & Ingestion): DONE — strict front-matter parser, markdown section chunker,
+  6 curated Northwind Bank FAQ documents (INR) in `data/kb/`, 20 tests passing, `bank-voice --doctor` reports KB OK.
+- Phases 2-7: pending. Next is Phase 2 (Hybrid Retrieval Indexer & BM25 + dense embedding).
 
 ## Environment (this machine)
 - Python 3.13.0. The venv folder is `test\` (NOT `tests\`); editable install points at `src`.
@@ -42,15 +43,9 @@ Pipeline: mic -> WebRTC VAD endpointing -> Faster-Whisper STT -> hybrid retrieva
   (exit 0xc0000409 / "shared object initialization failed"); Vulkan gives ~22.6 tok/s vs ~4.5 on CPU.
   Restart the Ollama app after changing that variable.
 - `llama3.2:latest` (2.0 GB) pulled; Whisper `base` cached in `~/.cache/huggingface`.
-- `webrtcvad-wheels==2.0.14` provides the `webrtcvad` module — the old `webrtcvad` package needs
-  `pkg_resources`, which setuptools >= 81 has removed.
+- `webrtcvad-wheels==2.0.14` provides the `webrtcvad` module.
 - Piper voice files live in the repo root; `bank-voice.exe` is registered in the venv Scripts.
 - pytest 9.1.1 and fastembed installed; `PIP_CACHE_DIR` points at the repo's `.cache/pip`.
-
-## Phase status
-- Phase 0 (installable & testable): DONE — `config.py`, `cli.py`, `__main__.py`, `tests/`,
-  `.gitignore`, `Memory.md`; 14 tests green; `--doctor` reports OK/PEND correctly.
-- Phases 1-7: not started. Next is Phase 1 (KB schema + loader + content).
 
 ## Conventions
 - `Settings()` = code defaults; `Settings.from_env()` = defaults + `BVA_*` overrides. Nothing
