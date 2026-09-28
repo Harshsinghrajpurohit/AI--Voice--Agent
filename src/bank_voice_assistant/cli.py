@@ -34,6 +34,13 @@ def build_parser() -> argparse.ArgumentParser:
     verbosity.add_argument("-q", "--quiet", action="store_true", help="warnings and errors only")
     parser.add_argument("--doctor", action="store_true", help="check the local environment, then exit")
     parser.add_argument("--build-index", action="store_true", help="build hybrid retrieval index from KB files")
+    parser.add_argument(
+        "-a", "--ask", "--query",
+        dest="query",
+        type=str,
+        help="ask a banking question to test retrieval and guardrailed generation",
+    )
+
     return parser
 
 
@@ -102,6 +109,35 @@ def run_build_index(settings: Settings) -> int:
     print(f"[OK  ] Hybrid index successfully built in {settings.paths.index_dir}")
     return EXIT_OK
 
+def run_query(settings: Settings, query: str) -> int:
+    """Retrieve chunks and generate a guarded answer for a test query."""
+    from .guardrails import GuardedGenerator
+    from .llm import GroundedGenerator
+    from .retrieval import HybridRetriever
+
+    retriever = HybridRetriever.load(
+        index_dir=settings.paths.index_dir,
+        embed_model=settings.retrieval.embed_model,
+    )
+
+    chunks = retriever.search(
+        query=query,
+        top_k=settings.retrieval.top_k,
+        min_score=settings.retrieval.min_score,
+        hybrid_alpha=settings.retrieval.hybrid_alpha,
+    )
+    raw_gen = GroundedGenerator(settings)
+    guarded_gen = GuardedGenerator(settings, raw_gen)
+
+    res = guarded_gen.generate(query, chunks)
+    print(f"\nQuery: {query}")
+    print(f"Refusal: {res.is_refusal}")
+    print(f"Chunks retrieved: {len(res.context_chunks)}")
+    print(f"Answer: {res.text}\n")
+    return EXIT_OK
+
+
+
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Entry point for both ``bank-voice`` and ``python -m bank_voice_assistant``."""
@@ -118,6 +154,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         if args.build_index:
             return run_build_index(settings)
+
+        if args.query:
+            return run_query(settings, args.query)
 
         print("Nothing to run yet — voice/ask modes arrive in later phases. Try --doctor or --build-index.")
         return EXIT_OK

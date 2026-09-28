@@ -32,3 +32,12 @@ def test_doctor_never_crashes(capsys: pytest.CaptureFixture[str]) -> None:
     code = main(["--doctor"])
     assert code in (EXIT_OK, EXIT_PROBLEM)
     assert "Environment check" in capsys.readouterr().out
+
+
+def test_query_flag_registered() -> None:
+    from bank_voice_assistant.cli import build_parser
+
+    parser = build_parser()
+    args = parser.parse_args(["--query", "What are your savings account rates?"])
+    assert args.query == "What are your savings account rates?"
+
