@@ -33,6 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
     verbosity.add_argument("-v", "--verbose", action="store_true", help="debug output")
     verbosity.add_argument("-q", "--quiet", action="store_true", help="warnings and errors only")
     parser.add_argument("--doctor", action="store_true", help="check the local environment, then exit")
+    parser.add_argument("--build-index", action="store_true", help="build hybrid retrieval index from KB files")
     return parser
 
 
@@ -65,7 +66,12 @@ def run_doctor(settings: Settings) -> int:
     else:
         print(f"[PEND] knowledge base   not authored yet (Phase 1) — {settings.paths.kb_dir}")
 
-    if settings.paths.index_dir.is_dir():
+    if (
+        settings.paths.index_dir.is_dir()
+        and (settings.paths.index_dir / "chunks.json").is_file()
+        and (settings.paths.index_dir / "embeddings.npy").is_file()
+        and (settings.paths.index_dir / "bm25.json").is_file()
+    ):
         print(f"[OK  ] retrieval index  {settings.paths.index_dir}")
     else:
         print(f"[PEND] retrieval index  not built yet (Phase 2) — {settings.paths.index_dir}")
@@ -75,6 +81,25 @@ def run_doctor(settings: Settings) -> int:
         print(f"{failures} problem(s) found.")
         return EXIT_PROBLEM
     print("All current-phase checks passed.")
+    return EXIT_OK
+
+
+def run_build_index(settings: Settings) -> int:
+    """Build dense + BM25 index from knowledge base files."""
+    from .kb import KnowledgeBase
+    from .retrieval import HybridRetriever
+
+    print(f"Loading knowledge base from {settings.paths.kb_dir}...")
+    kb = KnowledgeBase(settings.paths.kb_dir)
+    chunks = kb.load_all_chunks()
+    print(f"Loaded {len(chunks)} chunks. Building hybrid index (dense + BM25)...")
+
+    HybridRetriever.build_and_save(
+        chunks=chunks,
+        output_dir=settings.paths.index_dir,
+        embed_model=settings.retrieval.embed_model,
+    )
+    print(f"[OK  ] Hybrid index successfully built in {settings.paths.index_dir}")
     return EXIT_OK
 
 
@@ -91,7 +116,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.doctor:
             return run_doctor(settings)
 
-        print("Nothing to run yet — voice/ask modes arrive in later phases. Try --doctor.")
+        if args.build_index:
+            return run_build_index(settings)
+
+        print("Nothing to run yet — voice/ask modes arrive in later phases. Try --doctor or --build-index.")
         return EXIT_OK
     except BankVoiceAssistantError as exc:
         # Project errors carry actionable messages; show them instead of a traceback.
