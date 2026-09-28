@@ -2,7 +2,7 @@
 
 > Update at the end of every work session. Exists so a fresh chat (or a different AI tool)
 > can continue without re-reading the whole codebase or inventing things.
-> Last updated: 2026-09-28 — end of Phase 4.
+> Last updated: 2026-09-28 — end of Phase 5.
 
 ## What this project is
 Fully local, knowledge-base-grounded **banking FAQ** voice assistant. Answers only from
@@ -43,7 +43,10 @@ Pipeline: mic -> WebRTC VAD endpointing -> Faster-Whisper STT -> hybrid retrieva
 - Phase 4 (Numeric & Verbatim Verification Guardrails): DONE — verbatim number and phone sequence extractor,
   `NumericVerifier` with dual string & float normalization matching, `GuardedGenerator` orchestrating strict corrective
   retry and safe refusal fallback, `bank-voice --query <text>` CLI option, 38 deterministic tests passing.
-- Phases 5-7: pending. Next is Phase 5 (Evaluation Harness & Grounding Benchmark).
+- Phase 5 (Voice Pipeline — STT, TTS, Audio Transport): DONE — `Transcriber` wrapping Faster-Whisper with banking domain
+  prompt biasing, `PiperTTS` subprocess wrapper with length scaling and validation, `AudioTransport` encapsulating
+  `sounddevice` mic capture with WebRTC VAD endpointing and RMS energy gating, 47 deterministic tests passing.
+- Phases 6-7: pending. Next is Phase 6 (End-to-End Orchestration & Interactive Loop).
 
 ## Environment (this machine)
 - Python 3.13.0. The venv folder is `test\` (NOT `tests\`); editable install points at `src`.
