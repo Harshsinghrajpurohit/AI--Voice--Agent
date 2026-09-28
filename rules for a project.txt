@@ -1,0 +1,6 @@
+1. PRD.md - Project Requirements Document: Defines what you're building, who the target users are, and what features the project should have.
+2. Architecture.md: Outlines the app's flow and overall architecture, including the file and folder structure and the technical stack you'll use.
+3. Rules.md: Sets boundaries for the Al, like which libraries to use or avoid, how to handle errors, and what the Al should and shouldn't do.
+4.Phases.md: Breaks the project into manageable steps since Al can't build everything at once. Example: Phase 1 is login, Phase 2 is something else, and so on.
+5. Design.md: Covers the visual side, including colors, theme, fonts, and typography.
+6. Memory.md: You don't create this at the start. You add it once the Al begins coding. It keeps the Al updated on progress so it doesn't lose context when you switch to a new chat or Al tool. Without it, the Al wastes tokens by re-reading the whole codebase or making things up.

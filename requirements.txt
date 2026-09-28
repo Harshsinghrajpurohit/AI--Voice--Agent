@@ -1,0 +1,7 @@
+faster-whisper
+sounddevice
+scipy
+ollama
+numpy
+webrtcvad-wheels>=2.0.12  # maintained fork of webrtcvad: prebuilt wheels + no pkg_resources dependency
+piper-tts

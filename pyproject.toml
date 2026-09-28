@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bank-voice-assistant"
+version = "0.3.0"
+description = "Fully local, knowledge-base-grounded voice assistant for banking FAQs (STT + RAG + TTS)"
+readme = "readme.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "faster-whisper>=1.2",
+    "fastembed>=0.8",
+    "numpy>=2.0",
+    "ollama>=0.6",
+    "piper-tts>=1.8",
+    "scipy>=1.14",
+    "sounddevice>=0.5",
+    "webrtcvad-wheels>=2.0.12",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+bank-voice = "bank_voice_assistant.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "integration: requires local models (Whisper/fastembed) or a running Ollama server",
+]

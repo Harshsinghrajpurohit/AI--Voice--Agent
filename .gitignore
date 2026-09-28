@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+
+# the virtualenv in this repo is literally named "test" (not "tests")
+test/
+
+# caches + runtime artifacts
+.cache/
+*.wav
+
+# model weights: 63 MB voice model — download it, don't commit it
+*.onnx
+*.onnx.json
+
+# local overrides
+.env
+
+# Kilo Code local state + agent worktrees (a full copy of the project lives here)
+.kilo/
