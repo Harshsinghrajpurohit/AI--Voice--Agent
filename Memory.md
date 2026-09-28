@@ -2,7 +2,7 @@
 
 > Update at the end of every work session. Exists so a fresh chat (or a different AI tool)
 > can continue without re-reading the whole codebase or inventing things.
-> Last updated: 2026-09-28 — end of Phase 1.
+> Last updated: 2026-09-28 — end of Phase 2.
 
 ## What this project is
 Fully local, knowledge-base-grounded **banking FAQ** voice assistant. Answers only from
@@ -34,7 +34,10 @@ Pipeline: mic -> WebRTC VAD endpointing -> Faster-Whisper STT -> hybrid retrieva
   `.gitignore`, `Memory.md`, `PRD.md`, `Architecture.md`, `Rules.md`, `Phases.md`, `Design.md`.
 - Phase 1 (Knowledge Base & Ingestion): DONE — strict front-matter parser, markdown section chunker,
   6 curated Northwind Bank FAQ documents (INR) in `data/kb/`, 20 tests passing, `bank-voice --doctor` reports KB OK.
-- Phases 2-7: pending. Next is Phase 2 (Hybrid Retrieval Indexer & BM25 + dense embedding).
+- Phase 2 (Hybrid Retrieval Indexer & Search Engine): DONE — pure-Python BM25 engine preserving decimals,
+  dense FastEmbed (`bge-small-en-v1.5`) wrapper with normalized cosine scoring, linear score fusion with
+  `min_score` thresholding, persistence to `.cache/index/`, `bank-voice --build-index` wired into CLI, 25 tests passing.
+- Phases 3-7: pending. Next is Phase 3 (LLM Grounding & Verbatim Number Verification Guardrail).
 
 ## Environment (this machine)
 - Python 3.13.0. The venv folder is `test\` (NOT `tests\`); editable install points at `src`.
