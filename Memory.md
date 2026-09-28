@@ -2,7 +2,7 @@
 
 > Update at the end of every work session. Exists so a fresh chat (or a different AI tool)
 > can continue without re-reading the whole codebase or inventing things.
-> Last updated: 2026-09-28 — end of Phase 2.
+> Last updated: 2026-09-28 — end of Phase 3.
 
 ## What this project is
 Fully local, knowledge-base-grounded **banking FAQ** voice assistant. Answers only from
@@ -37,7 +37,10 @@ Pipeline: mic -> WebRTC VAD endpointing -> Faster-Whisper STT -> hybrid retrieva
 - Phase 2 (Hybrid Retrieval Indexer & Search Engine): DONE — pure-Python BM25 engine preserving decimals,
   dense FastEmbed (`bge-small-en-v1.5`) wrapper with normalized cosine scoring, linear score fusion with
   `min_score` thresholding, persistence to `.cache/index/`, `bank-voice --build-index` wired into CLI, 25 tests passing.
-- Phases 3-7: pending. Next is Phase 3 (LLM Grounding & Verbatim Number Verification Guardrail).
+- Phase 3 (Grounded LLM Generation): DONE — Ollama client wrapper with `llama3.2`, strict grounding prompt
+  with voice conciseness rules (<= 35 words / <= 3 sentences), markdown stripping for clean TTS output,
+  empty-retrieval and token-based refusal handling (`STANDARD_REFUSAL`), 31 tests passing.
+- Phases 4-7: pending. Next is Phase 4 (Numeric & Verbatim Verification Guardrails).
 
 ## Environment (this machine)
 - Python 3.13.0. The venv folder is `test\` (NOT `tests\`); editable install points at `src`.
