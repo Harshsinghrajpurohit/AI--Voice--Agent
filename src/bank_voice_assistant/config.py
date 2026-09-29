@@ -55,6 +55,17 @@ def _path(name: str, default: Path) -> Path:
     return Path(raw).expanduser().resolve() if raw else default
 
 
+def _str_tuple(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
+    """Comma-separated phrase list; blank entries are dropped, empties rejected."""
+    raw = _raw(name)
+    if raw is None:
+        return default
+    items = tuple(part.strip().lower() for part in raw.split(",") if part.strip())
+    if not items:
+        raise ConfigError(f"BVA_{name} must list at least one comma-separated value")
+    return items
+
+
 @dataclass(frozen=True, slots=True)
 class Paths:
     """Filesystem layout. Config describes paths, it never creates them."""
@@ -195,6 +206,33 @@ class TtsSettings:
 
 
 @dataclass(frozen=True, slots=True)
+class PipelineSettings:
+    """Interactive loop behaviour and the latency budget the project promises.
+
+    ``latency_target_s`` is what the turn telemetry is measured against;
+    ``latency_ceiling_s`` is the point where a turn is logged as a hard breach.
+    """
+
+    latency_target_s: float = 4.0
+    latency_ceiling_s: float = 8.0
+    max_turns: int = 0
+    silent_turn_retries: int = 2
+    exit_phrases: tuple[str, ...] = ("exit", "quit", "stop", "goodbye")
+
+    def __post_init__(self) -> None:
+        if self.latency_target_s <= 0.0:
+            raise ConfigError("latency_target_s must be > 0")
+        if self.latency_ceiling_s < self.latency_target_s:
+            raise ConfigError("latency_ceiling_s must be >= latency_target_s")
+        if self.max_turns < 0:
+            raise ConfigError("max_turns must be >= 0 (0 = run until the caller stops)")
+        if self.silent_turn_retries < 0:
+            raise ConfigError("silent_turn_retries must be >= 0")
+        if not self.exit_phrases:
+            raise ConfigError("exit_phrases must not be empty")
+
+
+@dataclass(frozen=True, slots=True)
 class Settings:
     """Aggregate settings object. Build it with ``Settings.from_env()``."""
 
@@ -205,6 +243,7 @@ class Settings:
     retrieval: RetrievalSettings = field(default_factory=RetrievalSettings)
     generation: GenerationSettings = field(default_factory=GenerationSettings)
     tts: TtsSettings = field(default_factory=TtsSettings)
+    pipeline: PipelineSettings = field(default_factory=PipelineSettings)
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -245,6 +284,13 @@ class Settings:
                 piper_exe=_str("PIPER_EXE", base.tts.piper_exe),
                 length_scale=_float("LENGTH_SCALE", base.tts.length_scale),
             ),
+            pipeline=PipelineSettings(
+                latency_target_s=_float("LATENCY_TARGET_S", base.pipeline.latency_target_s),
+                latency_ceiling_s=_float("LATENCY_CEILING_S", base.pipeline.latency_ceiling_s),
+                max_turns=_int("MAX_TURNS", base.pipeline.max_turns),
+                silent_turn_retries=_int("SILENT_TURN_RETRIES", base.pipeline.silent_turn_retries),
+                exit_phrases=_str_tuple("EXIT_PHRASES", base.pipeline.exit_phrases),
+            ),
         )
 
     @property
@@ -265,6 +311,7 @@ class Settings:
             "frame_samples": self.audio.frame_samples,
             "silence_frames_to_stop": self.silence_frames_to_stop,
             "max_words": self.generation.max_words,
+            "latency_target_s": self.pipeline.latency_target_s,
             "kb_dir": str(self.paths.kb_dir),
             "index_dir": str(self.paths.index_dir),
         }

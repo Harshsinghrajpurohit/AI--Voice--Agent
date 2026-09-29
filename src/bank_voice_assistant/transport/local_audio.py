@@ -134,3 +134,22 @@ class AudioTransport:
             sd.wait()
         except Exception as exc:
             raise AudioError(f"Audio playback failed: {exc}") from exc
+
+    def describe_devices(self) -> dict[str, str]:
+        """Name the default input/output devices. ``--doctor`` uses this check.
+
+        Raises:
+            AudioError: when PortAudio reports no usable default device.
+        """
+        import sounddevice as sd
+
+        try:
+            input_device = sd.query_devices(kind="input")
+            output_device = sd.query_devices(kind="output")
+        except Exception as exc:
+            raise AudioError(f"No usable default audio device: {exc}") from exc
+
+        return {
+            "input": f"{input_device['name']} ({int(input_device['max_input_channels'])} ch)",
+            "output": f"{output_device['name']} ({int(output_device['max_output_channels'])} ch)",
+        }

@@ -10,7 +10,9 @@ from __future__ import annotations
 import argparse
 import logging
 import shutil
+import sys
 from collections.abc import Sequence
+from typing import TextIO
 
 from . import __version__
 from .config import Settings
@@ -20,6 +22,25 @@ from .logging_setup import configure_logging
 EXIT_OK = 0
 EXIT_PROBLEM = 1
 EXIT_USAGE = 2
+
+
+def configure_console(stdout: TextIO | None = None, stderr: TextIO | None = None) -> None:
+    """Make console output lossy instead of fatal.
+
+    Knowledge base answers legitimately contain characters such as ``₹`` that a
+    legacy Windows code page cannot encode. Without this, printing a perfectly
+    valid answer raised ``UnicodeEncodeError`` and aborted the turn.
+    """
+    for stream in (stdout or sys.stdout, stderr or sys.stderr):
+        if stream is None:
+            continue
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(errors="replace")
+        except Exception:  # exotic stream (pytest capture, redirected pipe): not fatal
+            continue
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -34,6 +55,20 @@ def build_parser() -> argparse.ArgumentParser:
     verbosity.add_argument("-q", "--quiet", action="store_true", help="warnings and errors only")
     parser.add_argument("--doctor", action="store_true", help="check the local environment, then exit")
     parser.add_argument("--build-index", action="store_true", help="build hybrid retrieval index from KB files")
+    parser.add_argument(
+        "--voice", "--listen",
+        dest="voice",
+        action="store_true",
+        help="start the interactive voice loop (mic -> answer -> speakers)",
+    )
+    parser.add_argument(
+        "--turns",
+        dest="max_turns",
+        type=int,
+        default=None,
+        metavar="N",
+        help="stop the voice loop after N answered turns (default: until you say 'exit')",
+    )
     parser.add_argument(
         "-a", "--ask", "--query",
         dest="query",
@@ -71,17 +106,37 @@ def run_doctor(settings: Settings) -> int:
     if kb_files:
         print(f"[OK  ] knowledge base   {len(kb_files)} file(s) in {settings.paths.kb_dir}")
     else:
-        print(f"[PEND] knowledge base   not authored yet (Phase 1) — {settings.paths.kb_dir}")
+        print(f"[FAIL] knowledge base   no markdown documents in {settings.paths.kb_dir}")
+        failures += 1
 
-    if (
-        settings.paths.index_dir.is_dir()
-        and (settings.paths.index_dir / "chunks.json").is_file()
-        and (settings.paths.index_dir / "embeddings.npy").is_file()
-        and (settings.paths.index_dir / "bm25.json").is_file()
+    index_files = ("chunks.json", "embeddings.npy", "bm25.json")
+    if (settings.paths.index_dir / index_files[0]).is_file() and all(
+        (settings.paths.index_dir / name).is_file() for name in index_files[1:]
     ):
         print(f"[OK  ] retrieval index  {settings.paths.index_dir}")
     else:
-        print(f"[PEND] retrieval index  not built yet (Phase 2) — {settings.paths.index_dir}")
+        print(
+            f"[PEND] retrieval index  not built — run: bank-voice --build-index "
+            f"({settings.paths.index_dir})"
+        )
+
+    try:
+        from .transport import AudioTransport
+
+        devices = AudioTransport(settings).describe_devices()
+        print(f"[OK  ] audio devices    in: {devices['input']} | out: {devices['output']}")
+    except BankVoiceAssistantError as exc:
+        print(f"[FAIL] audio devices    {exc}")
+        failures += 1
+    except Exception as exc:  # defensive: --doctor must never crash
+        print(f"[FAIL] audio devices    unexpected error: {exc}")
+        failures += 1
+
+    cfg_pipeline = settings.pipeline
+    print(
+        f"[OK  ] latency budget   target {cfg_pipeline.latency_target_s:.1f}s · "
+        f"ceiling {cfg_pipeline.latency_ceiling_s:.1f}s (VAD + STT + retrieval + LLM + TTS)"
+    )
 
     print()
     if failures:
@@ -110,30 +165,34 @@ def run_build_index(settings: Settings) -> int:
     return EXIT_OK
 
 def run_query(settings: Settings, query: str) -> int:
-    """Retrieve chunks and generate a guarded answer for a test query."""
-    from .guardrails import GuardedGenerator
-    from .llm import GroundedGenerator
-    from .retrieval import HybridRetriever
+    """One-shot text turn: retrieval + guardrailed generation, no audio."""
+    from .pipeline import VoicePipeline
 
-    retriever = HybridRetriever.load(
-        index_dir=settings.paths.index_dir,
-        embed_model=settings.retrieval.embed_model,
-    )
+    result = VoicePipeline(settings).handle_text_turn(query)
 
-    chunks = retriever.search(
-        query=query,
-        top_k=settings.retrieval.top_k,
-        min_score=settings.retrieval.min_score,
-        hybrid_alpha=settings.retrieval.hybrid_alpha,
-    )
-    raw_gen = GroundedGenerator(settings)
-    guarded_gen = GuardedGenerator(settings, raw_gen)
-
-    res = guarded_gen.generate(query, chunks)
     print(f"\nQuery: {query}")
-    print(f"Refusal: {res.is_refusal}")
-    print(f"Chunks retrieved: {len(res.context_chunks)}")
-    print(f"Answer: {res.text}\n")
+    print(f"Refusal: {result.is_refusal}")
+    print(f"Chunks retrieved: {result.telemetry.chunks_retrieved}")
+    print(f"Answer: {result.answer_text}")
+    print(f"Latency: {result.telemetry.summary()}\n")
+    return EXIT_OK
+
+
+def run_voice(settings: Settings, max_turns: int | None = None) -> int:
+    """Interactive loop: mic -> Whisper -> retrieval -> LLM -> Piper -> speakers."""
+    from .pipeline import VoicePipeline
+
+    pipeline = VoicePipeline(settings)
+    print("Northwind Bank voice assistant ready.")
+    print(f"Speak your question; say '{settings.pipeline.exit_phrases[0]}' to stop.")
+
+    try:
+        turns = pipeline.run(max_turns=max_turns)
+    except KeyboardInterrupt:
+        print("\nStopped.")
+        return EXIT_OK
+
+    print(f"\nSession ended after {len(turns)} answered turn(s).")
     return EXIT_OK
 
 
@@ -142,6 +201,7 @@ def run_query(settings: Settings, query: str) -> int:
 def main(argv: Sequence[str] | None = None) -> int:
     """Entry point for both ``bank-voice`` and ``python -m bank_voice_assistant``."""
     args = build_parser().parse_args(argv)
+    configure_console()
     logger = configure_logging(verbose=args.verbose, quiet=args.quiet)
 
     try:
@@ -158,7 +218,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.query:
             return run_query(settings, args.query)
 
-        print("Nothing to run yet — voice/ask modes arrive in later phases. Try --doctor or --build-index.")
+        if args.voice:
+            return run_voice(settings, max_turns=args.max_turns)
+
+        print(
+            "Nothing to do. Try --ask \"what is the home loan interest rate?\", "
+            "--voice, --build-index or --doctor."
+        )
         return EXIT_OK
     except BankVoiceAssistantError as exc:
         # Project errors carry actionable messages; show them instead of a traceback.
