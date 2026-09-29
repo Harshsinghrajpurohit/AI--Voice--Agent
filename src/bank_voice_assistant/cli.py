@@ -1,8 +1,9 @@
 """Command-line entry point.
 
-Phase 0 scope: argument parsing, logging setup, ``--version``, and ``--doctor``
-(an offline environment self-check). Retrieval/LLM/voice modes arrive in later
-phases — nothing here pretends to work before then.
+Modes: ``--ask "question"`` (one-shot text turn), ``--voice`` (interactive audio
+loop), ``--build-index`` (rebuild the hybrid index), ``--doctor`` (offline
+environment self-check). Everything heavy (models, index, mic) is imported and
+loaded lazily by the stage that needs it, so ``--help`` and ``--doctor`` stay fast.
 """
 
 from __future__ import annotations
