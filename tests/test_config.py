@@ -51,6 +51,11 @@ def test_from_env_applies_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
         ("BVA_MAX_TURNS", "-1"),          # must be >= 0
         ("BVA_SILENT_TURN_RETRIES", "-2"),  # must be >= 0
         ("BVA_EXIT_PHRASES", ","),        # must list at least one phrase
+        ("BVA_MIN_ANSWER_ACCURACY", "1.5"),     # a rate must be within 0..1
+        ("BVA_MAX_OVER_REFUSAL_RATE", "-0.1"),  # a rate must be within 0..1
+        ("BVA_MAX_P95_LATENCY_S", "0"),         # must be > 0
+        ("BVA_MIN_FACT_RECALL", "high"),        # not a number
+        ("BVA_MAX_P95_LATENCY_S", "1"),         # must be >= max_p50_latency_s
     ],
 )
 def test_invalid_values_raise_config_error(
@@ -86,3 +91,22 @@ def test_pipeline_env_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.pipeline.exit_phrases == ("stop", "bye", "goodbye")
     assert settings.as_log_dict()["latency_target_s"] == pytest.approx(3.5)
 
+
+def test_eval_thresholds_match_the_documented_floors() -> None:
+    """Each default comes from a promise: grounding, the dataset, or the budget."""
+    thresholds = Settings().eval
+    assert thresholds.min_grounding_rate == pytest.approx(1.0)   # nothing ungrounded, ever
+    assert thresholds.min_refusal_recall == pytest.approx(0.95)  # admits adv-dev-mode-01 only
+    assert thresholds.max_p50_latency_s == pytest.approx(4.0)    # Phases.md Phase 7 target
+    assert thresholds.max_p95_latency_s == pytest.approx(Settings().pipeline.latency_ceiling_s)
+
+
+def test_eval_thresholds_are_overridable_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BVA_MIN_ANSWER_ACCURACY", "0.75")
+    monkeypatch.setenv("BVA_MAX_P95_LATENCY_S", "5.5")
+
+    thresholds = Settings.from_env().eval
+
+    assert thresholds.min_answer_accuracy == pytest.approx(0.75)
+    assert thresholds.max_p95_latency_s == pytest.approx(5.5)
+    assert Settings().eval.min_answer_accuracy == pytest.approx(0.90)   # env must not leak
