@@ -14,8 +14,8 @@ from pathlib import Path
 
 from ..config import Settings
 from ..errors import BankVoiceAssistantError
-from ..guardrails import GuardedGenerator
-from ..llm import GenerationResult, GroundedGenerator
+from ..guardrails import GuardedGenerator, detect_instruction_override
+from ..llm import GenerationResult, GroundedGenerator, refusal_result
 from ..retrieval import HybridRetriever
 from ..stt import Transcriber
 from ..transport import AudioCaptureResult, AudioTransport
@@ -153,7 +153,17 @@ class VoicePipeline:
 
     # -- stages -------------------------------------------------------------
     def answer(self, query: str) -> tuple[GenerationResult, float, float]:
-        """Retrieve and generate. Returns ``(result, retrieval_s, llm_s)``."""
+        """Retrieve and generate. Returns ``(result, retrieval_s, llm_s)``.
+
+        An instruction-override attempt is refused before retrieval: the input is
+        not a question about the bank, so there is nothing to look up, and the
+        model is never given the chance to act on the instruction.
+        """
+        override = detect_instruction_override(query)
+        if override is not None:
+            logger.warning("Instruction-override attempt refused before retrieval: %s", override)
+            return refusal_result(), 0.0, 0.0
+
         t0 = time.perf_counter()
         chunks = self.retriever.search(
             query=query,

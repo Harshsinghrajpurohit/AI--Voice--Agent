@@ -31,6 +31,7 @@ from bank_voice_assistant.eval import (
     load_golden_dataset,
     run_evaluation,
     source_name,
+    write_report,
 )
 from bank_voice_assistant.kb import Chunk, KnowledgeBase
 from bank_voice_assistant.llm import STANDARD_REFUSAL, GenerationResult
@@ -410,6 +411,21 @@ def test_the_run_record_names_the_thresholds_it_was_held_to(tmp_path: Path) -> N
     assert run.as_dict()["thresholds"]["min_fact_recall"] == pytest.approx(0.25)
     assert run.as_dict()["thresholds"]["max_p95_latency_s"] == pytest.approx(9.5)
     assert run.as_dict()["thresholds"]["min_refusal_recall"] == pytest.approx(0.95)
+
+
+def test_write_report_creates_the_file_and_its_directory(tmp_path: Path) -> None:
+    """A kept record is still evidence: valid JSON, thresholds included."""
+    run = build_runner(eval_settings(tmp_path)).run()
+    target = tmp_path / "reports" / "nested" / "run.json"
+
+    written = write_report(run, target)
+
+    assert written == target
+    text = target.read_text(encoding="utf-8")
+    assert text.endswith("\n")
+    record = json.loads(text)
+    assert record["passed"] is True
+    assert record["thresholds"] == asdict(EvalSettings())
 
 
 def test_run_evaluation_scores_the_dataset_it_is_given(tmp_path: Path) -> None:

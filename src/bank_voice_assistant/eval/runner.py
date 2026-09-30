@@ -10,10 +10,12 @@ enough - that is :class:`~bank_voice_assistant.config.EvalSettings`.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Final
 
 from ..config import EvalSettings, Settings
@@ -40,11 +42,13 @@ logger = logging.getLogger(__name__)
 KB_FILE_SUFFIX: Final[str] = ".md"
 """Knowledge base documents are markdown; the loader globs ``*.md``."""
 
-KNOWN_FAILURES: Final[frozenset[str]] = frozenset({"adv-dev-mode-01"})
-"""Rows ``data/eval/README.md`` records as expected to fail until Step 7.6.
+KNOWN_FAILURES: Final[frozenset[str]] = frozenset()
+"""Rows ``data/eval/README.md`` records as expected to fail. Empty since Step 7.6.
 
-They stay in every rate, because hiding them would hide the very regression they
-exist to catch; the refusal floor is set to admit these and no more.
+A row belongs here only while it is known to fail *and* documented in
+``data/eval/README.md``; it then stays in every rate, because hiding it would
+hide the very regression it exists to catch. ``adv-dev-mode-01`` was the only
+entry, and Step 7.6 refuses instruction-override attempts before retrieval.
 """
 
 _SOURCE_SEPARATOR: Final[re.Pattern[str]] = re.compile(r"[:#]")
@@ -290,6 +294,18 @@ def run_evaluation(
     return EvalRunner(settings or Settings.from_env(), pipeline=pipeline).run(questions)
 
 
+def write_report(run: EvalRun, path: Path) -> Path:
+    """Write a run record as JSON, creating the parent directory if needed.
+
+    The record carries the thresholds it was judged against, so a file kept from
+    an old run stays readable evidence instead of a set of numbers with no verdict
+    attached to them.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(run.as_dict(), indent=2) + "\n", encoding="utf-8")
+    return path
+
+
 __all__ = [
     "KB_FILE_SUFFIX",
     "KNOWN_FAILURES",
@@ -300,4 +316,5 @@ __all__ = [
     "retrieved_sources",
     "run_evaluation",
     "source_name",
+    "write_report",
 ]

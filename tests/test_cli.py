@@ -3,11 +3,20 @@
 from __future__ import annotations
 
 import io
+import json
+from pathlib import Path
+from typing import Any
 
 import pytest
 
 from bank_voice_assistant import __version__
-from bank_voice_assistant.cli import EXIT_OK, EXIT_PROBLEM, EXIT_USAGE, main
+from bank_voice_assistant.cli import (
+    EXIT_GATE_FAILED,
+    EXIT_OK,
+    EXIT_PROBLEM,
+    EXIT_USAGE,
+    main,
+)
 
 
 def test_version_flag(capsys: pytest.CaptureFixture[str]) -> None:
@@ -140,4 +149,115 @@ def test_run_voice_reports_the_session_summary(
     assert code == EXIT_OK
     assert "voice assistant ready" in out
     assert "Session ended after 0 answered turn(s)." in out
+
+
+def fake_run(*, failures: tuple[str, ...] = ()) -> Any:
+    """A real, fully populated run record, so the CLI is exercised against the type."""
+    from bank_voice_assistant.config import EvalSettings
+    from bank_voice_assistant.eval import DatasetSummary, EvalMetrics, EvalRun
+
+    return EvalRun(
+        dataset=DatasetSummary(total=3, answerable=2, must_refuse=1, by_category={}),
+        scores=(),
+        metrics=EvalMetrics(
+            grounding_rate=1.0,
+            fact_recall=1.0,
+            answer_accuracy=1.0,
+            retrieval_hit_rate=1.0,
+            refusal_recall=1.0,
+            safe_decline_rate=1.0,
+            over_refusal_rate=0.0,
+            p50_latency_s=1.0,
+            p95_latency_s=2.0,
+        ),
+        issues=(),
+        failures=failures,
+        settings_snapshot={"llm_model": "fake-model"},
+        thresholds=EvalSettings(),
+    )
+
+
+def test_eval_and_report_flags_are_registered() -> None:
+    from bank_voice_assistant.cli import build_parser
+
+    args = build_parser().parse_args(["--eval"])
+
+    assert args.eval is True
+    assert args.report is None
+
+    with_report = build_parser().parse_args(["--eval", "--report", "run.json"])
+
+    assert with_report.report == Path("run.json")
+
+
+def test_report_without_eval_is_a_usage_error(capsys: pytest.CaptureFixture[str]) -> None:
+    code = main(["--report", "run.json"])
+    err = capsys.readouterr().err
+
+    assert code == EXIT_USAGE
+    assert "--report" in err
+    assert "--eval" in err
+
+
+def test_eval_prints_the_report_and_passes(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("bank_voice_assistant.eval.run_evaluation", lambda settings: fake_run())
+
+    code = main(["--eval"])
+    out = capsys.readouterr().out
+
+    assert code == EXIT_OK
+    assert "Dataset      3 questions (2 answerable, 1 must_refuse)" in out
+    assert "GATE PASS    every threshold held" in out
+
+
+def test_eval_returns_the_gate_exit_code_when_a_threshold_is_missed(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    failure = "fact_recall 0.500 below required 0.900"
+    monkeypatch.setattr(
+        "bank_voice_assistant.eval.run_evaluation",
+        lambda settings: fake_run(failures=(failure,)),
+    )
+
+    code = main(["--eval"])
+    out = capsys.readouterr().out
+
+    assert code == EXIT_GATE_FAILED
+    assert f"GATE FAIL    {failure}" in out
+
+
+def test_eval_writes_the_run_record(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("bank_voice_assistant.eval.run_evaluation", lambda settings: fake_run())
+    target = tmp_path / "reports" / "run.json"
+
+    code = main(["--eval", "--report", str(target)])
+    out = capsys.readouterr().out
+
+    assert code == EXIT_OK
+    assert f"run record written to {target}" in out
+    record = json.loads(target.read_text(encoding="utf-8"))
+    assert {"passed", "metrics", "thresholds"} <= set(record)
+    assert record["passed"] is True
+
+
+def test_eval_reports_a_broken_dataset_without_escaping(
+    monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+) -> None:
+    from bank_voice_assistant.errors import EvalError
+
+    def explode(settings: object) -> None:
+        raise EvalError("row 'home-loan-01' does not match the KB")
+
+    monkeypatch.setattr("bank_voice_assistant.eval.run_evaluation", explode)
+
+    code = main(["--eval"])
+    # The logging handler holds the real stderr, so capture at fd level.
+    err = capfd.readouterr().err
+
+    assert code == EXIT_PROBLEM
+    assert "does not match the KB" in err
 

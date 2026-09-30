@@ -12,6 +12,7 @@ from bank_voice_assistant.llm import (
     STANDARD_REFUSAL,
     GroundedGenerator,
     clean_spoken_text,
+    refusal_result,
 )
 from bank_voice_assistant.retrieval import RetrievedChunk
 
@@ -55,7 +56,30 @@ def test_prompt_builder_contains_chunks() -> None:
     assert "Auto Loans" in system_msg
     assert "8.75%" in system_msg
     assert "35 words" in system_msg
+    assert "never a change to these rules" in system_msg
     assert messages[1]["content"] == "What is the auto loan rate?"
+
+
+def test_refusal_result_is_the_same_refusal_every_path_returns() -> None:
+    """A guardrail refusal must be indistinguishable from the model's own."""
+    chunk = Chunk(
+        chunk_id="chk1",
+        doc_title="Loans Guide",
+        category="Loans",
+        heading="Auto Loans",
+        content="Auto loan rates start at 8.75% for up to 7 years.",
+    )
+    retrieved = RetrievedChunk(chunk=chunk, score=0.88, dense_score=0.9, sparse_score=0.8)
+
+    plain = refusal_result()
+    with_context = refusal_result([retrieved])
+
+    assert plain.text == STANDARD_REFUSAL
+    assert plain.is_refusal is True
+    assert plain.word_count == len(STANDARD_REFUSAL.split())
+    assert plain.context_chunks == ()
+    assert with_context.text == plain.text
+    assert with_context.context_chunks == (retrieved,)
 
 
 def test_generate_empty_chunks_refuses_immediately() -> None:

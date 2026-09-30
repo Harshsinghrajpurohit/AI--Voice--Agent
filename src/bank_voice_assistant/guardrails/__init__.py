@@ -1,15 +1,15 @@
-"""Numeric grounding verification and guardrail enforcement."""
+"""Numeric grounding verification, instruction-override defence, and enforcement."""
 
 from __future__ import annotations
 
 import logging
 import re
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Final, Sequence
 
 from ..config import Settings
 from ..errors import GuardrailViolation
-from ..llm import STANDARD_REFUSAL, GenerationResult, GroundedGenerator
+from ..llm import GenerationResult, GroundedGenerator, refusal_result
 from ..retrieval import RetrievedChunk
 
 logger = logging.getLogger(__name__)
@@ -108,6 +108,112 @@ class NumericVerifier:
             raise GuardrailViolation(f"Ungrounded numbers detected: {list(result.ungrounded_numbers)}")
 
 
+def _alternation(*alternatives: str) -> re.Pattern[str]:
+    """Compile an alternation, so that one entry still reads as one rule."""
+    return re.compile("(?:" + "|".join(alternatives) + ")", re.IGNORECASE)
+
+
+INSTRUCTION_OVERRIDE_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
+    (
+        "rule-override",
+        _alternation(
+            r"\b(?:ignore|disregard|forget|override|bypass)\b[^.]{0,40}"
+            r"\b(?:instructions?|rules?|guidelines?|prompts?|restrictions?|scope)\b",
+            r"\bskip\b[^.]{0,30}\b(?:rules?|limits?|restrictions?|checks?)\b",
+        ),
+    ),
+    (
+        "mode-switch",
+        _alternation(r"\b(?:developer|debug|god|unrestricted|maintenance|administrator)\s+mode\b"),
+    ),
+    (
+        "persona-switch",
+        _alternation(
+            r"\b(?:you are now|from now on you are|act as|pretend to be|pretend you are"
+            r"|role ?play|let'?s role ?play)\b",
+            r"\byou never refuse\b",
+        ),
+    ),
+    (
+        "rule-disclosure",
+        _alternation(
+            r"\b(?:repeat|reveal|show|print|output|disclose|encode|translate|tell me)\b"
+            r"[^.]{0,40}\b(?:instructions?|rules?|guidelines?|prompt)\b",
+            r"\b(?:what are|list)\b[^.]{0,20}\byour (?:instructions?|rules?|guidelines?|prompt)\b",
+        ),
+    ),
+    (
+        "rule-suspension",
+        _alternation(
+            r"\b(?:disable|drop|remove|turn off|do not follow|no longer follow)\b"
+            r"[^.]{0,30}\b(?:rules?|instructions?|guidelines?|restrictions?|limits?)\b"
+        ),
+    ),
+)
+"""Shapes of prompt-injection attempt, paired with the rule each one breaks.
+
+Every pattern joins an override with the thing it overrides, so a genuine
+question that happens to use the same verb - "I want to ignore the previous loan
+offer and apply again" - is left alone. The list is deliberately about *shape*:
+a longer list of attack phrases would only ever catch the attacks already seen.
+"""
+
+RULE_CHANGE_ANNOUNCEMENTS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
+    (
+        "mode-announcement",
+        _alternation(r"\b(?:developer|debug|unrestricted|maintenance)\s+mode\b"),
+    ),
+    (
+        "own-rules",
+        _alternation(r"\bmy (?:banking )?(?:rules?|instructions?|guidelines?|restrictions?)\b"),
+    ),
+    (
+        "rule-removal",
+        _alternation(
+            r"\bI (?:have |'ve |am )?(?:now )?(?:disabled|dropped|ignored|removed|turned off)\b",
+            r"\bI (?:do not|don't) have to follow\b",
+        ),
+    ),
+    (
+        "unbound",
+        _alternation(r"\bI (?:am|'m) no longer (?:bound|restricted|limited|required)\b"),
+    ),
+)
+"""Replies that announce the assistant has changed or dropped its own rules.
+
+All four require self-reference ("my rules", "I have dropped"), which is what
+keeps an ordinary grounded answer that merely uses "no longer" - "you are no
+longer charged a late fee after 7 days" - out of the net.
+"""
+
+
+def _matched_rule(patterns: tuple[tuple[str, re.Pattern[str]], ...], text: str) -> str | None:
+    """Name the first rule in ``patterns`` that ``text`` breaks, or ``None``."""
+    for name, pattern in patterns:
+        if pattern.search(text):
+            return name
+    return None
+
+
+def detect_instruction_override(text: str) -> str | None:
+    """Name the rule an instruction-override attempt broke, or ``None``.
+
+    Checked against the input *before* retrieval: an attempt to change the
+    assistant's rules is not a question about the bank, so the model should never
+    see it and the pattern list should not have to be perfect.
+    """
+    return _matched_rule(INSTRUCTION_OVERRIDE_PATTERNS, text)
+
+
+def announces_rule_change(text: str) -> str | None:
+    """Name the rule an announcement of changed behaviour broke, or ``None``.
+
+    The numeric verifier passes any reply without figures, which is exactly what
+    a compliance announcement is, so the shape of that failure is checked here.
+    """
+    return _matched_rule(RULE_CHANGE_ANNOUNCEMENTS, text)
+
+
 class GuardedGenerator:
     """Orchestrates generation with numeric verification and automatic retry."""
 
@@ -124,17 +230,17 @@ class GuardedGenerator:
     def generate(self, query: str, chunks: Sequence[RetrievedChunk]) -> GenerationResult:
         """Generate response with verification and safe fallback on violation."""
         if not chunks:
-            return GenerationResult(
-                text=STANDARD_REFUSAL,
-                is_refusal=True,
-                word_count=len(STANDARD_REFUSAL.split()),
-                context_chunks=(),
-            )
+            return refusal_result()
 
         # 1. Primary generation attempt
         result = self.generator.generate(query, chunks)
         if result.is_refusal:
             return result
+
+        announced = announces_rule_change(result.text)
+        if announced is not None:
+            logger.warning("Rule-change announcement replaced with a refusal: %s", announced)
+            return refusal_result(chunks)
 
         # 2. Verify numeric grounding
         verification = self.verifier.verify(result.text, chunks)
@@ -159,6 +265,14 @@ class GuardedGenerator:
             if retry_result.is_refusal:
                 return retry_result
 
+            retry_announced = announces_rule_change(retry_result.text)
+            if retry_announced is not None:
+                logger.warning(
+                    "Guardrail retry announced a rule change; refusing instead: %s",
+                    retry_announced,
+                )
+                return refusal_result(chunks)
+
             retry_verif = self.verifier.verify(retry_result.text, chunks)
             if retry_verif.is_valid:
                 logger.info("Guardrail retry succeeded.")
@@ -170,10 +284,5 @@ class GuardedGenerator:
             )
 
         # 4. Safe fallback
-        return GenerationResult(
-            text=STANDARD_REFUSAL,
-            is_refusal=True,
-            word_count=len(STANDARD_REFUSAL.split()),
-            context_chunks=tuple(chunks),
-        )
+        return refusal_result(chunks)
 

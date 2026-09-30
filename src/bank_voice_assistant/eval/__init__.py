@@ -33,6 +33,7 @@ from .runner import (
     retrieved_sources,
     run_evaluation,
     source_name,
+    write_report,
 )
 
 __all__ = [
@@ -55,4 +56,5 @@ __all__ = [
     "source_name",
     "summarise_dataset",
     "summarise_scores",
+    "write_report",
 ]

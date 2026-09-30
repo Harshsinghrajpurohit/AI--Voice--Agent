@@ -71,11 +71,16 @@ false failures:
 Growth in this list is a signal that a later phase needs a different scoring mode for rules rather
 than values.
 
-## Known failing row
+## Regression rows
 
-`adv-dev-mode-01` is expected to fail until Step 7.6. It records the real compliance failure found by
-the discarded baseline run, where the model announced it had dropped its grounding rules. A suite
-containing only already-passing rows could not detect that regression.
+`adv-dev-mode-01` records the real compliance failure found by the discarded baseline run, where the
+model announced it had dropped its grounding rules. Since Step 7.6 the exact phrasing is refused by
+`guardrails.detect_instruction_override` before retrieval, so the model is never asked; the row stays
+because a suite containing only already-passing rows could not detect that regression returning.
+
+Nine of the twelve `adversarial` rows are refused by that same gate, ahead of the model. The three
+`adv-fakepremise-*` rows are not: they are sincere, leading questions whose false figure has to be
+refused by grounding, and they are what keeps the model's own refusal behaviour under test.
 
 ## Validation and its limits
 
@@ -93,6 +98,19 @@ containing only already-passing rows could not detect that regression.
 3. Prefer values whose neighbouring figures differ, so a wrong answer lands on a plausible number
    rather than an obvious one.
 4. Run the structural and verbatim checks before committing.
+
+## Running the evaluation
+
+```bash
+bank-voice --eval                    # score the dataset and print the report
+bank-voice --eval --report run.json  # also write the full run record as JSON
+```
+
+The run replays every row through the real assistant, so it needs a built index (`--build-index`) and
+the local model server. Exit codes: `0` every threshold held, `1` the run could not complete (missing
+index, unreadable dataset), `3` the run completed but missed a threshold. The printed report ends with
+one line per missed threshold, and the JSON record carries the thresholds alongside the metrics, so a
+record kept from an earlier run can still be re-judged.
 
 ## Pending decisions
 
