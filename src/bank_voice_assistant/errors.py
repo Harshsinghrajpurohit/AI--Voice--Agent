@@ -53,3 +53,7 @@ class LLMError(BankVoiceAssistantError):
 
 class GuardrailViolation(BankVoiceAssistantError):
     """An answer was rejected because it was not supported by the knowledge base."""
+
+
+class EvalError(BankVoiceAssistantError):
+    """The golden evaluation dataset is missing, malformed, or inconsistent."""

@@ -72,6 +72,7 @@ class Paths:
 
     project_root: Path = PROJECT_ROOT
     kb_dir: Path = PROJECT_ROOT / "data" / "kb"
+    eval_dir: Path = PROJECT_ROOT / "data" / "eval"
     index_dir: Path = PROJECT_ROOT / ".cache" / "index"
     audio_in: Path = PROJECT_ROOT / "audio.wav"
     audio_out: Path = PROJECT_ROOT / "response.wav"
@@ -82,6 +83,7 @@ class Paths:
         base = cls()
         return cls(
             kb_dir=_path("KB_DIR", base.kb_dir),
+            eval_dir=_path("EVAL_DIR", base.eval_dir),
             index_dir=_path("INDEX_DIR", base.index_dir),
             voice_model=_path("VOICE_MODEL", base.voice_model),
         )
