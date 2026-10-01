@@ -170,13 +170,13 @@ RULE_CHANGE_ANNOUNCEMENTS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
     (
         "rule-removal",
         _alternation(
-            r"\bI (?:have |'ve |am )?(?:now )?(?:disabled|dropped|ignored|removed|turned off)\b",
+            r"\bI(?: have |'ve | am )?(?:now )?(?:disabled|dropped|ignored|removed|turned off)\b",
             r"\bI (?:do not|don't) have to follow\b",
         ),
     ),
     (
         "unbound",
-        _alternation(r"\bI (?:am|'m) no longer (?:bound|restricted|limited|required)\b"),
+        _alternation(r"\bI(?: am|'m) no longer (?:bound|restricted|limited|required)\b"),
     ),
 )
 """Replies that announce the assistant has changed or dropped its own rules.

@@ -23,6 +23,22 @@ class WhisperModelProtocol(Protocol):
     ) -> tuple[Sequence[Any], Any]: ...
 
 
+def to_float_waveform(audio: np.ndarray) -> np.ndarray:
+    """Convert captured PCM to the float32 waveform in [-1, 1] Whisper expects.
+
+    ``AudioTransport.record_turn`` produces int16 samples, but faster-whisper treats
+    any array it is handed as already-decoded float32: an int16 array is therefore
+    read as a massively clipped signal and transcribes to noise, or to nothing at
+    all. The scaling lives here, at the boundary, so no caller hands over the wrong
+    scale.
+    """
+    if audio.dtype == np.int16:
+        return audio.astype(np.float32) / 32768.0
+    if audio.dtype == np.int32:
+        return audio.astype(np.float32) / 2147483648.0
+    return audio.astype(np.float32, copy=False)
+
+
 class Transcriber:
     """Loads and runs Faster-Whisper with banking vocabulary biasing."""
 
@@ -58,6 +74,8 @@ class Transcriber:
         """Transcribe audio file or waveform array to text using domain initial prompt."""
         if isinstance(audio, Path):
             audio = str(audio)
+        elif isinstance(audio, np.ndarray):
+            audio = to_float_waveform(audio)
 
         try:
             model = self._get_model()

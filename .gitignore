@@ -11,6 +11,7 @@ test/
 # caches + runtime artifacts
 .cache/
 *.wav
+run.json
 
 # model weights: 63 MB voice model — download it, don't commit it
 *.onnx

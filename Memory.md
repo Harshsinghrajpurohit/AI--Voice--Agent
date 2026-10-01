@@ -2,7 +2,7 @@
 
 > Update at the end of every work session. Exists so a fresh chat (or a different AI tool)
 > can continue without re-reading the whole codebase or inventing things.
-> Last updated: 2026-09-29 — end of Phase 6.
+> Last updated: 2026-10-01 — end of Phase 7.
 
 ## What this project is
 Fully local, knowledge-base-grounded **banking FAQ** voice assistant. Answers only from
@@ -24,8 +24,10 @@ Pipeline: mic -> WebRTC VAD endpointing -> Faster-Whisper STT -> hybrid retrieva
   in a retrieved chunk; one stricter retry, then refuse (`GuardrailViolation`).
 - Answers: <= 35 words / <= 3 sentences spoken, plus a fixed refusal sentence.
 - TTS: Piper `en_US-lessac-medium` (22050 Hz). The model is a downloaded asset, NOT in git.
-- VAD: webrtcvad aggressiveness 3 + RMS energy gate 800; 800 ms trailing silence ends the turn;
-  15 s recording cap; 5 speech frames to arm.
+- VAD: webrtcvad aggressiveness 3 + an RMS gate that self-calibrates to the live microphone's
+  ambient noise at the start of every turn (floor 120, noise x2.0, ceiling 800), so one setting
+  works with the internal array or a headset, headphones or not; set `BVA_CALIBRATION_MS=0` to pin
+  the old fixed 800 gate. 800 ms trailing silence ends the turn; 15 s recording cap; 5 frames to arm.
 - Latency budget: <= 4 s target, <= 8 s hard ceiling. It now lives in `Settings.pipeline`
   (`BVA_LATENCY_TARGET_S` / `BVA_LATENCY_CEILING_S`) and every turn logs a per-stage breakdown
   (VAD + STT + retrieval + LLM + TTS); **playback is excluded** from the budget on purpose.
@@ -64,7 +66,15 @@ Pipeline: mic -> WebRTC VAD endpointing -> Faster-Whisper STT -> hybrid retrieva
   `--doctor` now also verifies audio devices and prints the latency budget, 76 deterministic tests
   passing in ~1.0 s. Live-verified on this machine (no cloud): Piper question -> Whisper
   round-trip verbatim -> retrieval 0.46 s -> grounded INR answer -> Piper WAV; warm turn ≈ 2.9 s.
-- Phase 7 (Evaluation, Benchmarking & Hardening): NEXT — golden dataset + eval runner in `eval/`.
+- Phase 7 (Evaluation, Benchmarking & Hardening): DONE — golden dataset (61 rows: 39 answerable /
+  22 must_refuse across 8 categories) with a validated JSONL loader, pure-function scoring metrics
+  (`eval/metrics.py`), pass/fail floors and ceilings in `EvalSettings`, and the replay harness
+  (`eval/runner.py`; `bank-voice --eval [--report PATH]`, exit code 3 on a missed threshold). Step 7.6
+  added the instruction-override defence — `guardrails.detect_instruction_override` refuses overrides
+  *before* retrieval and `announces_rule_change` catches figure-free compliance lines in
+  `GuardedGenerator` — which retired the `adv-dev-mode-01` known failure and raised
+  `min_refusal_recall` to 1.0. 178 deterministic tests passing; the live 61-row acceptance run still
+  needs a built index + a running Ollama server.
 
 ## Environment (this machine)
 - Python 3.13.0. The venv folder is `test\` (NOT `tests\`); editable install points at `src`.
@@ -110,3 +120,11 @@ Pipeline: mic -> WebRTC VAD endpointing -> Faster-Whisper STT -> hybrid retrieva
   later tests noisy, so `tests/test_pipeline.py` clears the handler via an autouse fixture.
 - Inserting into a file with the editor tool needs the *actual* line count (`Get-Content | Measure`)
   or the content lands mid-function — verify with `Get-Content | Select-Object -Skip N` afterwards.
+- A single fixed RMS gate cannot fit both mics at once: on the internal array most speech frames sit
+  below the old 800 gate, so voice mode kept answering "I did not catch that". The energy gate now
+  calibrates to ambient noise per turn (`transport/local_audio.py`); verify a quiet mic with
+  `python -c "import sounddevice as sd, numpy as np; a=sd.rec(int(5*16000),samplerate=16000,channels=1,dtype='int16'); sd.wait(); print('rms', round(float(np.sqrt(np.mean(a.astype(float)**2))),1))"`.
+- faster-whisper assumes any numpy array it is handed is already float32 in [-1, 1]; `record_turn`
+  yields int16, so passing the array straight through transcribes to garbage or to nothing — the
+  "Speech detected but nothing was transcribed" symptom. `Transcriber` scales it at the boundary
+  (`stt.to_float_waveform`). A file path still works untouched.

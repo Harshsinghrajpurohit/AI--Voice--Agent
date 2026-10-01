@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 from scipy.io.wavfile import read, write
 
-from ..config import Settings
+from ..config import Settings, VadSettings
 from ..errors import AudioError
 
 logger = logging.getLogger(__name__)
@@ -24,6 +25,38 @@ class AudioCaptureResult:
     duration_s: float
     max_amplitude: int
     speech_detected: bool
+
+
+def frame_rms(frame: np.ndarray) -> float:
+    """Root-mean-square level of one int16 frame, in raw sample counts."""
+    data = frame.astype(np.float64)
+    return float(np.sqrt(np.mean(data * data)))
+
+
+def ambient_rms(frame_levels: Sequence[float]) -> float:
+    """Robust ambient level for a calibration window: the 20th percentile.
+
+    A spoken word inside the window raises the mean but not the low end, so the
+    percentile is what stops a talker calibrating the gate to their own voice.
+    """
+    if not frame_levels:
+        return 0.0
+    return float(np.percentile(np.asarray(frame_levels, dtype=np.float64), 20))
+
+
+def energy_gate(ambient: float, vad: VadSettings) -> float:
+    """RMS a frame must clear to count as speech, for this microphone.
+
+    A fixed gate only ever suits one microphone: speech from a quiet internal
+    array sits just above its noise floor, while a boom headset is far louder.
+    Tracking the ambient noise (``noise_margin``) between an absolute floor and
+    the configured ``energy_threshold`` makes one setting serve both, with
+    headphones or not. ``calibration_ms = 0`` restores the fixed gate.
+    """
+    if vad.calibration_ms <= 0:
+        return float(vad.energy_threshold)
+    adaptive = ambient * vad.noise_margin
+    return float(min(vad.energy_threshold, max(vad.energy_floor, adaptive)))
 
 
 class AudioTransport:
@@ -44,6 +77,7 @@ class AudioTransport:
         frame_samples = cfg_audio.frame_samples
         max_frames = int(cfg_vad.max_record_seconds * 1000 / cfg_audio.frame_ms)
         silence_frames_to_stop = cfg_vad.silence_ms_to_stop // cfg_audio.frame_ms
+        calibration_frames = max(0, cfg_vad.calibration_ms // cfg_audio.frame_ms)
 
         frames: list[bytes] = []
         speech_started = False
@@ -59,16 +93,17 @@ class AudioTransport:
                 dtype=cfg_audio.dtype,
                 blocksize=frame_samples,
             ) as stream:
+                gate = self._calibrate_gate(stream, frame_samples, calibration_frames, cfg_vad)
                 for _ in range(max_frames):
                     frame, overflowed = stream.read(frame_samples)
                     if overflowed:
                         logger.warning("Microphone buffer overflowed.")
 
                     frame_bytes = frame.tobytes()
-                    frame_energy = float(np.sqrt(np.mean(frame.astype(np.float64) ** 2)))
+                    frame_energy = frame_rms(frame)
                     is_speech = (
                         vad.is_speech(frame_bytes, cfg_audio.sample_rate)
-                        and frame_energy > cfg_vad.energy_threshold
+                        and frame_energy > gate
                     )
 
                     if not speech_started:
@@ -118,6 +153,27 @@ class AudioTransport:
             max_amplitude=max_amp,
             speech_detected=speech_started,
         )
+
+    def _calibrate_gate(
+        self,
+        stream: object,
+        frame_samples: int,
+        calibration_frames: int,
+        cfg_vad: VadSettings,
+    ) -> float:
+        """Choose this turn's RMS gate from the ambient noise of the live microphone.
+
+        Measured before listening on every turn, so plugging in or unplugging a
+        headset simply changes the device the OS reports and the gate adapts next
+        turn: one setting serves a quiet internal array and a loud boom mic alike.
+        """
+        if calibration_frames <= 0:
+            return float(cfg_vad.energy_threshold)
+        levels = [frame_rms(stream.read(frame_samples)[0]) for _ in range(calibration_frames)]
+        ambient = ambient_rms(levels)
+        gate = energy_gate(ambient, cfg_vad)
+        logger.info("Ambient noise %.0f RMS -> speaking gate %.0f RMS", ambient, gate)
+        return gate
 
     def play_audio(self, audio_source: Path | np.ndarray, sample_rate: int | None = None) -> None:
         """Play audio file or numpy array through the system speakers."""

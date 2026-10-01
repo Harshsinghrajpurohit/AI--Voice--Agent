@@ -117,7 +117,19 @@ class VadSettings:
     """Endpointing tunables — the latency-vs-interruption dial."""
 
     aggressiveness: int = 3
+
     energy_threshold: int = 800
+    """Fixed RMS gate; the ceiling of the calibrated gate when ``calibration_ms`` > 0."""
+
+    energy_floor: int = 120
+    """Lowest RMS the calibration may pick, so near-silence never arms a turn."""
+
+    noise_margin: float = 2.0
+    """Speech must exceed the ambient noise measured at the start of the turn by this factor."""
+
+    calibration_ms: int = 400
+    """Ambient window sampled before listening; 0 pins the fixed ``energy_threshold``."""
+
     silence_ms_to_stop: int = 800
     max_record_seconds: int = 15
     min_speech_frames: int = 5
@@ -127,6 +139,14 @@ class VadSettings:
             raise ConfigError("aggressiveness must be 0..3 (0 = keep most audio, 3 = filter most)")
         if self.energy_threshold < 0:
             raise ConfigError("energy_threshold must be >= 0 (int16 RMS gate)")
+        if self.energy_floor < 0:
+            raise ConfigError("energy_floor must be >= 0 (int16 RMS)")
+        if self.energy_floor > self.energy_threshold:
+            raise ConfigError("energy_floor must be <= energy_threshold")
+        if self.noise_margin <= 0:
+            raise ConfigError("noise_margin must be > 0")
+        if self.calibration_ms < 0:
+            raise ConfigError("calibration_ms must be >= 0")
         if self.silence_ms_to_stop <= 0:
             raise ConfigError("silence_ms_to_stop must be > 0")
         if not 1 <= self.max_record_seconds <= 120:
@@ -313,6 +333,9 @@ class Settings:
             vad=VadSettings(
                 aggressiveness=_int("VAD_AGGRESSIVENESS", base.vad.aggressiveness),
                 energy_threshold=_int("ENERGY_THRESHOLD", base.vad.energy_threshold),
+                energy_floor=_int("ENERGY_FLOOR", base.vad.energy_floor),
+                noise_margin=_float("NOISE_MARGIN", base.vad.noise_margin),
+                calibration_ms=_int("CALIBRATION_MS", base.vad.calibration_ms),
                 silence_ms_to_stop=_int("SILENCE_MS_TO_STOP", base.vad.silence_ms_to_stop),
                 max_record_seconds=_int("MAX_RECORD_SECONDS", base.vad.max_record_seconds),
                 min_speech_frames=_int("MIN_SPEECH_FRAMES", base.vad.min_speech_frames),
@@ -380,6 +403,8 @@ class Settings:
             "min_score": self.retrieval.min_score,
             "hybrid_alpha": self.retrieval.hybrid_alpha,
             "vad_aggressiveness": self.vad.aggressiveness,
+            "energy_floor": self.vad.energy_floor,
+            "noise_margin": self.vad.noise_margin,
             "frame_samples": self.audio.frame_samples,
             "silence_frames_to_stop": self.silence_frames_to_stop,
             "max_words": self.generation.max_words,

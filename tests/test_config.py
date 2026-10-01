@@ -43,6 +43,10 @@ def test_from_env_applies_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
         ("BVA_FRAME_MS", "25"),           # WebRTC VAD allows 10/20/30 only
         ("BVA_SAMPLE_RATE", "12345"),     # not a WebRTC rate
         ("BVA_VAD_AGGRESSIVENESS", "4"),  # 0..3 only
+        ("BVA_ENERGY_FLOOR", "-1"),        # must be >= 0
+        ("BVA_ENERGY_FLOOR", "900"),       # energy_floor must be <= energy_threshold
+        ("BVA_NOISE_MARGIN", "0"),         # must be > 0
+        ("BVA_CALIBRATION_MS", "-5"),      # must be >= 0
         ("BVA_TOP_K", "0"),               # must be >= 1
         ("BVA_MIN_SCORE", "1.5"),         # must be within 0..1
         ("BVA_TOP_K", "four"),            # not an integer
