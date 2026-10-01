@@ -51,6 +51,7 @@ class PiperTTS:
                 cmd,
                 input=clean_text,
                 text=True,
+                encoding="utf-8",
                 capture_output=True,
                 check=False,
             )

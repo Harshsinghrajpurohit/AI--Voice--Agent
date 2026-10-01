@@ -22,3 +22,13 @@ run.json
 
 # Kilo Code local state + agent worktrees (a full copy of the project lives here)
 .kilo/
+
+# Planning & session memory docs
+Architecture.md
+Design.md
+Memory.md
+PRD.md
+Phases.md
+Rules.md
+rules for a project.txt
+

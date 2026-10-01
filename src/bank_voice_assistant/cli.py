@@ -221,7 +221,7 @@ def run_voice(settings: Settings, max_turns: int | None = None) -> int:
     from .pipeline import VoicePipeline
 
     pipeline = VoicePipeline(settings)
-    print("Northwind Bank voice assistant ready.")
+    print("UCIC Bank voice assistant ready.")
     print(f"Speak your question; say '{settings.pipeline.exit_phrases[0]}' to stop.")
 
     try:

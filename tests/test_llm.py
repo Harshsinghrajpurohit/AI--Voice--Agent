@@ -30,9 +30,9 @@ class FakeOllamaClient:
 
 
 def test_clean_spoken_text() -> None:
-    raw = "**Northwind Classic** savings has a *minimum* balance of `5,000` rupees."
+    raw = "**UCIC Classic** savings has a *minimum* balance of `5,000` rupees."
     cleaned = clean_spoken_text(raw)
-    assert cleaned == "Northwind Classic savings has a minimum balance of 5,000 rupees."
+    assert cleaned == "UCIC Classic savings has a minimum balance of 5,000 rupees."
     assert "*" not in cleaned
     assert "`" not in cleaned
 

@@ -116,6 +116,26 @@ def test_tts_successful_subprocess(tmp_path: Path) -> None:
         assert out_file.exists()
 
 
+def test_tts_sends_utf8_to_piper_so_rupee_signs_survive(tmp_path: Path) -> None:
+    """Windows' cp1252 default cannot encode the rupee sign, which every rates answer has."""
+    out_file = tmp_path / "out.wav"
+    tts = PiperTTS(Settings())
+    captured: dict = {}
+
+    def fake_subprocess_run(cmd, **kwargs):
+        captured.update(kwargs)
+        out_file.write_bytes(b"RIFF....WAVE")
+        return MagicMock(returncode=0)
+
+    with patch("bank_voice_assistant.tts.shutil.which", return_value="piper"), \
+         patch("pathlib.Path.is_file", return_value=True), \
+         patch("subprocess.run", side_effect=fake_subprocess_run):
+        tts.synthesize("The minimum balance is \u20b95,000.", output_path=out_file)
+
+    assert captured["encoding"] == "utf-8"
+    assert "\u20b9" in captured["input"]
+
+
 def test_tts_subprocess_failure_raises(tmp_path: Path) -> None:
     out_file = tmp_path / "out.wav"
     settings = Settings()

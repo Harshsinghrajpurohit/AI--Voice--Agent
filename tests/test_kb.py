@@ -83,7 +83,7 @@ def test_load_all_kb_documents() -> None:
     assert len(chunks) >= 18
     # Assert specific domain contents are present
     all_text = " ".join(c.searchable_text for c in chunks)
-    assert "Northwind Classic Savings Account" in all_text
+    assert "UCIC Classic Savings Account" in all_text
     assert "Fixed Deposit (FD) rates" in all_text
     assert "Cobalt Credit Card" in all_text
     assert "1800-419-0022" in all_text

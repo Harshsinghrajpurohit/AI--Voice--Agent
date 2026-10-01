@@ -5,10 +5,10 @@ tags: [credit_cards, rewards, late_fees, interest_rate, annual_fee, lounge_acces
 last_updated: 2026-09-01
 ---
 
-## Northwind Cobalt Credit Card
+## UCIC Cobalt Credit Card
 The Cobalt Card is our everyday rewards card. It has an annual fee of ₹500, waived upon annual spends exceeding ₹50,000. It earns 2 reward points for every ₹100 spent on retail, and 5 reward points per ₹100 spent on grocery and dining. 1 reward point equals ₹0.25.
 
-## Northwind Apex Metal Credit Card
+## UCIC Apex Metal Credit Card
 The Apex Metal Card is a premium lifestyle card with an annual fee of ₹4,999 plus GST. The fee is waived if total annual spends exceed ₹5,00,000. It includes unlimited domestic airport lounge visits, 4 complimentary international lounge visits per year via Priority Pass, and earns 4 reward points per ₹100 spent on all categories.
 
 ## Credit Card Finance Charges and APR

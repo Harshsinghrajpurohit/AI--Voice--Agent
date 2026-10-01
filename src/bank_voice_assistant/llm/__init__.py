@@ -17,7 +17,7 @@ STANDARD_REFUSAL = (
 
 REFUSAL_TOKEN = "REFUSE"
 
-SYSTEM_PROMPT_TEMPLATE = """You are the voice assistant for Northwind Bank.
+SYSTEM_PROMPT_TEMPLATE = """You are the voice assistant for UCIC Bank.
 Your task is to answer the customer's question using ONLY the provided verified banking records.
 
 RULES:

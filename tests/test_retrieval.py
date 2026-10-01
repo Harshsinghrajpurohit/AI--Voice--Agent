@@ -19,7 +19,7 @@ def test_tokenize_preserves_decimals() -> None:
 
 def test_bm25_build_and_score() -> None:
     corpus = [
-        "Northwind Classic Savings Account has a minimum balance of 5000.",
+        "UCIC Classic Savings Account has a minimum balance of 5000.",
         "Home loan interest rate starts at 8.40 percent.",
         "Cobalt Credit Card annual fee is 500 rupees.",
     ]
